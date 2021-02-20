@@ -8,7 +8,19 @@
                    syms))
      ,@body))
 
-(defmacro %atomic-setf-reset (accumulator &key (pop t))
+(define-condition atomic-reset-error (error) ())
+
+(define-condition with-atomic-setf-reset-error (error)
+  ((places :initarg :places
+           :reader with-atomic-setf-reset-error-places
+           :documentation "List of places retaining their original value")))
+
+(define-condition with-atomic-setf-reset-warning (warning)
+  ((places :initarg :places
+           :reader with-atomic-setf-reset-warning-places
+           :documentation "List of places retaining their original value")))
+
+(defmacro %atomic-setf-reset (errorp accumulator &key (pop t))
   (declare (special *accumulator*))
   (let ((place-list (if pop
                         (cdr *accumulator*)
@@ -17,9 +29,11 @@
        ,@(when pop `((pop ,accumulator)))
        (setf ,accumulator (reverse ,accumulator))
        ,@(loop for place in (reverse place-list)
-               collect `(progn (format t "Place is: ~A, accumulator is: ~A~%" ',place ,accumulator)
-                               (when (> (length ,accumulator) 0)
-                                 (setf ,place (pop ,accumulator))))))))
+               collect `(when (> (length ,accumulator) 0)
+                          (setf ,place (pop ,accumulator))))
+       ,(if errorp
+            `(error 'with-atomic-setf-reset-error :places ',place-list)
+            `(warn 'with-atomic-setf-reset-warning :places ',place-list)))))
 
 (defmacro %atomic-setf-individual (conditions accumulator place value)
   (declare (special *accumulator*))
@@ -35,7 +49,7 @@
   `(progn ,@(loop for (p v) on args by 'cddr
                   collect `(%atomic-setf-individual ,conditions ,accumulator ,p ,v))))
 
-(defmacro with-atomic-setf ((&key (handle-conditions 'error)) &body forms)
+(defmacro with-atomic-setf ((&key errorp (handle-conditions 'error)) &body forms)
   (with-gensyms (accum args)
     `(trivial-cltl2:compiler-let ((*accumulator* nil))
        (let ((,accum '()))
@@ -49,7 +63,5 @@
                                          ,',accum
                                          ,@,args)))
                ,@forms)
-           (,handle-conditions ()
-             (%atomic-setf-reset ,accum :pop nil))
-           (atomic-reset-error ()
-             (%atomic-setf-reset ,accum :pop nil)))))))
+           ((or ,handle-conditions atomic-reset-error) ()
+             (%atomic-setf-reset ,errorp ,accum :pop nil)))))))
