@@ -1,5 +1,4 @@
 # cl-atomic-setf
-### _Your Name <your.name@example.com>_
 
 This package implements the macro `with-atomic-setf`, which exposes the local
 macros `asetf` and `atomic-setf`, which both do the same thing. These macros
